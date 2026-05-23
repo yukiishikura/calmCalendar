@@ -1,0 +1,18 @@
+{
+  "name": "Calm Calendar",
+  "short_name": "Calm",
+  "description": "無駄な機能を省いた少人数向け共有カレンダーです。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAFA",
+  "theme_color": "#FAFAFA",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/assets/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
