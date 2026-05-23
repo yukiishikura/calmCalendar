@@ -1034,7 +1034,11 @@ function renderMembersScreen() {
           state.isSynced = true;
           state.syncCode = inputCode;
           state.currentUser = 'user-b'; // 参加者側になる
-          state.userAName = 'パートナー';
+          
+          // 自分の名前をログイン時の名前(state.userAName)から退避
+          state.userBName = state.userAName || 'あなた';
+          // 相手の名前を仮のデモ用名「はるか」に設定
+          state.userAName = 'はるか';
           
           // 擬似的な初期予定を追加
           const demoEvents = [
@@ -1065,17 +1069,20 @@ function renderMembersScreen() {
           state.syncCode = inputCode;
           state.currentUser = 'user-b'; // 招待コードを入力した側なので、user-b (参加者) となる
 
-          // サーバー側にデータがすでに存在し、名前がある場合
+          // 自分の名前はログインした時の名前なので、現在の userAName を退避・マッピング
+          const myName = state.userAName || 'あなた';
+
+          // 相手の名前を user-a として取得
           if (serverData && serverData.userAName) {
             state.userAName = serverData.userAName; // 相手の名前を user-a として取得
           } else {
             state.userAName = 'パートナー';
           }
-          // 自分の名前はログインした時の名前なので、現在の userAName (ログイン時に入力された state.userAName) を userBName に退避・マッピング
-          state.userBName = localStorage.getItem('calm_user_a_name') || 'あなた'; 
+          state.userBName = myName; 
 
-          // 予定の結合
-          const mergedEvents = serverData ? [...serverData.events] : [];
+          // 予定の結合 (サーバーデータが不完全な場合のクラッシュ対策)
+          const serverEvents = (serverData && Array.isArray(serverData.events)) ? serverData.events : [];
+          const mergedEvents = [...serverEvents];
           state.events.forEach(myEv => {
             // 重複していない自分の予定（user-bとしての予定）をマージ
             if (!mergedEvents.some(se => se.id === myEv.id)) {
