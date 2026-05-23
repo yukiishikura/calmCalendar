@@ -64,6 +64,50 @@ export default async function handler(req, res) {
         return;
       }
 
+      // 既存のデータを取得する
+      const getResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(['GET', `calmcal:${code}`])
+      });
+
+      let existingData = {};
+      if (getResponse.ok) {
+        const getResult = await getResponse.json();
+        if (getResult.result) {
+          try {
+            existingData = JSON.parse(getResult.result);
+          } catch (e) {
+            console.error('Failed to parse existing raw data:', e);
+          }
+        }
+      }
+
+      // 名前のマージロジック：
+      // 新しい値が空、または「パートナー」「あなた」などのデフォルト値の場合、既存の具体的な名前を保護する
+      let finalUserAName = data.userAName;
+      let finalUserBName = data.userBName;
+
+      const isDefaultOrEmpty = (name) => {
+        return !name || name === 'パートナー' || name === 'あなた';
+      };
+
+      if (existingData.userAName && isDefaultOrEmpty(data.userAName)) {
+        finalUserAName = existingData.userAName;
+      }
+      if (existingData.userBName && isDefaultOrEmpty(data.userBName)) {
+        finalUserBName = existingData.userBName;
+      }
+
+      const mergedData = {
+        events: data.events, // 予定はそのまま上書き
+        userAName: finalUserAName,
+        userBName: finalUserBName
+      };
+
       // KVにカレンダーデータを保存 (上書き)
       const response = await fetch(url, {
         method: 'POST',
@@ -71,11 +115,33 @@ export default async function handler(req, res) {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(['SET', `calmcal:${code}`, JSON.stringify(data)])
+        body: JSON.stringify(['SET', `calmcal:${code}`, JSON.stringify(mergedData)])
       });
 
       if (!response.ok) {
         throw new Error(`KV saving failed: ${response.statusText}`);
+      }
+
+      res.status(200).json({ success: true });
+    } else if (req.method === 'DELETE') {
+      const { code } = req.query;
+      if (!code) {
+        res.status(400).json({ error: 'Missing code parameter' });
+        return;
+      }
+
+      // KVからカレンダーデータを削除 (DEL)
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(['DEL', `calmcal:${code}`])
+      });
+
+      if (!response.ok) {
+        throw new Error(`KV deleting failed: ${response.statusText}`);
       }
 
       res.status(200).json({ success: true });

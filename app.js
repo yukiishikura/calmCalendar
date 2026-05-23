@@ -164,6 +164,28 @@ async function fetchEventsFromServer() {
     if (!res.ok) throw new Error('Failed to fetch from server');
 
     const data = await res.json();
+    
+    // パートナーによってカレンダーが削除（連携解除）されたことを検知
+    if (data && !data.userAName && !data.userBName) {
+      console.warn('Sync connection closed by partner.');
+      state.isSynced = false;
+      state.syncCode = '';
+      state.currentUser = 'user-a';
+      state.events = state.events.filter(e => e.createdBy === 'user-a');
+      state.userBName = 'パートナー';
+      state.myInviteCode = generateRandomInviteCode();
+      localStorage.setItem('calm_my_invite_code', state.myInviteCode);
+      
+      saveEventsToStorage();
+      saveUserNamesToStorage();
+      saveSyncStatus();
+      saveLoginStatus();
+      
+      alert('パートナーとの連携が解除されました。');
+      initAppView();
+      return;
+    }
+
     if (data && Array.isArray(data.events)) {
       state.events = data.events;
       
@@ -976,6 +998,7 @@ function renderMembersScreen() {
   if (state.isSynced) {
     document.getElementById('btn-disconnect').addEventListener('click', () => {
       if (confirm('パートナーとの連携を解除しますか？（解除するとパートナーの予定は表示されなくなります）')) {
+        const oldSyncCode = state.syncCode;
         state.isSynced = false;
         state.syncCode = '';
         state.currentUser = 'user-a'; // 自分のアカウントに戻す
@@ -990,6 +1013,14 @@ function renderMembersScreen() {
         saveUserNamesToStorage();
         saveSyncStatus();
         saveLoginStatus();
+
+        // サーバー側の部屋データを削除 (DELETE)
+        if (oldSyncCode) {
+          fetch(`/api/sync?code=${oldSyncCode}`, { method: 'DELETE' }).catch(err => {
+            console.error('Failed to delete sync room on server:', err);
+          });
+        }
+
         renderMembersScreen();
       }
     });

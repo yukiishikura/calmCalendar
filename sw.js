@@ -1,4 +1,4 @@
-const CACHE_NAME = 'awai-cache-v1';
+const CACHE_NAME = 'calm-cache-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -38,7 +38,11 @@ self.addEventListener('activate', event => {
 
 // リクエスト発生時にキャッシュから返却（Cache First、失敗時はネットワーク）
 self.addEventListener('fetch', event => {
-  // 外部フォントやローカルリクエストのみ処理
+  // APIリクエスト（/api/で始まるもの）やGET以外のメソッドはキャッシュせずバイパスする
+  if (event.request.url.includes('/api/') || event.request.method !== 'GET') {
+    return; // Service Workerは干渉せずネットワークに直接パスする
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then(response => {
