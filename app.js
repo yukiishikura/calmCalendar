@@ -48,36 +48,12 @@ function getHoliday(year, month, day) {
 // --- 1. デフォルトのデモデータ ---
 const DEFAULT_EVENTS = [
   {
-    id: "demo-1",
+    id: "welcome-1",
     title: "「Calm Calendar」を使い始める",
-    date: getOffsetDateString(-2), // 2日前
+    date: getOffsetDateString(0), // 今日
     time: "10:00",
     note: "複数人向けのカレンダーアプリ。今日から予定をここに共有していきます。",
     createdBy: "user-a"
-  },
-  {
-    id: "demo-2",
-    title: "ふたりで晩ごはん",
-    date: getOffsetDateString(0), // 今日
-    time: "19:00",
-    note: "駅前の和食屋さんで晩ごはん。お互い無理のない時間に合流しましょう。",
-    createdBy: "user-b"
-  },
-  {
-    id: "demo-3",
-    title: "週末の静かなカフェ散策",
-    date: getOffsetDateString(2), // 2日後
-    time: "14:00",
-    note: "Notionのような余白があるカフェを見つけたので、一緒に行ってみませんか？本を持っていこう。",
-    createdBy: "user-a"
-  },
-  {
-    id: "demo-4",
-    title: "美術館の特別展へ行く",
-    date: getOffsetDateString(8), // 8日後
-    time: "11:00",
-    note: "セージグリーンがテーマの現代アート展。チケットは事前予約済みです。",
-    createdBy: "user-b"
   }
 ];
 
@@ -88,13 +64,27 @@ function getOffsetDateString(offsetDays) {
   return d.toISOString().split('T')[0];
 }
 
+// 招待コードのランダム生成関数 (CALM-XXXX-XXXX)
+function generateRandomInviteCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let p1 = '';
+  let p2 = '';
+  for (let i = 0; i < 4; i++) {
+    p1 += chars.charAt(Math.floor(Math.random() * chars.length));
+    p2 += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `CALM-${p1}-${p2}`;
+}
+
 // --- 2. アプリケーション状態 (State) ---
 let state = {
   isLoggedIn: false,
-  isSynced: true, // デフォルトは連携済み (あなた & はるか)
-  currentUser: 'user-a', // 'user-a' (あなた) or 'user-b' (パートナー)
+  isSynced: false,
+  currentUser: 'user-a', // 'user-a' (カレンダー作成者) or 'user-b' (カレンダー参加者)
   userAName: 'あなた',
-  userBName: 'はるか',
+  userBName: 'パートナー',
+  myInviteCode: '', // 自分の招待コード
+  syncCode: '', // 同期に使用している共有コード
   activeTab: 'calendar', // 'calendar' | 'members' | 'settings'
   currentYear: new Date().getFullYear(),
   currentMonth: new Date().getMonth(), // 0-11
@@ -104,7 +94,7 @@ let state = {
 
 // --- 3. データ永続化 (LocalStorage) ---
 function loadStateFromStorage() {
-  const storedEvents = localStorage.getItem('awai_events');
+  const storedEvents = localStorage.getItem('calm_events');
   if (storedEvents) {
     state.events = JSON.parse(storedEvents);
   } else {
@@ -112,46 +102,118 @@ function loadStateFromStorage() {
     saveEventsToStorage();
   }
 
-  const storedUserAName = localStorage.getItem('awai_user_a_name');
+  const storedUserAName = localStorage.getItem('calm_user_a_name');
   if (storedUserAName) state.userAName = storedUserAName;
 
-  const storedUserBName = localStorage.getItem('awai_user_b_name');
+  const storedUserBName = localStorage.getItem('calm_user_b_name');
   if (storedUserBName) state.userBName = storedUserBName;
 
-  const storedLogin = localStorage.getItem('awai_is_logged_in');
+  const storedLogin = localStorage.getItem('calm_is_logged_in');
   if (storedLogin === 'true') state.isLoggedIn = true;
 
-  const storedUser = localStorage.getItem('awai_current_user');
+  const storedUser = localStorage.getItem('calm_current_user');
   if (storedUser) state.currentUser = storedUser;
 
   const storedSynced = localStorage.getItem('calm_is_synced');
-  if (storedSynced) {
-    state.isSynced = storedSynced === 'true';
+  if (storedSynced) state.isSynced = storedSynced === 'true';
+
+  const storedMyCode = localStorage.getItem('calm_my_invite_code');
+  if (storedMyCode) {
+    state.myInviteCode = storedMyCode;
   } else {
-    state.isSynced = true; // デフォルト
+    state.myInviteCode = generateRandomInviteCode();
+    localStorage.setItem('calm_my_invite_code', state.myInviteCode);
   }
+
+  const storedSyncCode = localStorage.getItem('calm_sync_code');
+  if (storedSyncCode) state.syncCode = storedSyncCode;
 }
 
 function saveEventsToStorage() {
-  localStorage.setItem('awai_events', JSON.stringify(state.events));
+  localStorage.setItem('calm_events', JSON.stringify(state.events));
 }
 
 function saveUserNamesToStorage() {
-  localStorage.setItem('awai_user_a_name', state.userAName);
-  localStorage.setItem('awai_user_b_name', state.userBName);
+  localStorage.setItem('calm_user_a_name', state.userAName);
+  localStorage.setItem('calm_user_b_name', state.userBName);
 }
 
 function saveLoginStatus() {
-  localStorage.setItem('awai_is_logged_in', state.isLoggedIn ? 'true' : 'false');
-  localStorage.setItem('awai_current_user', state.currentUser);
+  localStorage.setItem('calm_is_logged_in', state.isLoggedIn ? 'true' : 'false');
+  localStorage.setItem('calm_current_user', state.currentUser);
   saveSyncStatus();
 }
 
 function saveSyncStatus() {
   localStorage.setItem('calm_is_synced', state.isSynced ? 'true' : 'false');
+  localStorage.setItem('calm_sync_code', state.syncCode);
 }
 
-// --- 4. ユーティリティ & 補助関数 ---
+// --- 4. サーバー同期 API 連携 ---
+
+// サーバーからデータを取得する
+async function fetchEventsFromServer() {
+  if (!state.isSynced || !state.syncCode) return;
+
+  try {
+    const res = await fetch(`/api/sync?code=${state.syncCode}`);
+    if (res.status === 503) {
+      console.warn('Database not configured. Working in local standalone mode.');
+      return;
+    }
+    if (!res.ok) throw new Error('Failed to fetch from server');
+
+    const data = await res.json();
+    if (data && Array.isArray(data.events)) {
+      state.events = data.events;
+      
+      // 名前の同期
+      if (state.currentUser === 'user-a') {
+        if (data.userAName) state.userAName = data.userAName;
+        if (data.userBName) state.userBName = data.userBName;
+      } else {
+        if (data.userBName) state.userBName = data.userBName;
+        if (data.userAName) state.userAName = data.userAName;
+      }
+
+      saveEventsToStorage();
+      saveUserNamesToStorage();
+    }
+  } catch (err) {
+    console.error('Sync error (GET):', err);
+  }
+}
+
+// サーバーへデータを送信する
+async function uploadEventsToServer() {
+  if (!state.isSynced || !state.syncCode) return;
+
+  try {
+    const res = await fetch('/api/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        code: state.syncCode,
+        data: {
+          events: state.events,
+          userAName: state.userAName,
+          userBName: state.userBName
+        }
+      })
+    });
+    if (res.status === 503) {
+      console.warn('Database not configured. Save cached locally.');
+      return;
+    }
+    if (!res.ok) throw new Error('Failed to upload to server');
+  } catch (err) {
+    console.error('Sync error (POST):', err);
+  }
+}
+
+// --- 5. ユーティリティ & 補助関数 ---
 function getCurrentUserName() {
   return state.currentUser === 'user-a' ? state.userAName : state.userBName;
 }
@@ -171,14 +233,14 @@ function formatJapaneseDate(dateStr) {
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${weekdays[d.getDay()]})`;
 }
 
-// --- 5. DOM 要素の参照 ---
+// --- 6. DOM 要素の参照 ---
 const appEl = document.getElementById('app');
 const bottomNavEl = document.getElementById('bottom-nav');
 const modalContainerEl = document.getElementById('modal-container');
 const modalBackdropEl = document.getElementById('modal-backdrop');
 const modalContentEl = document.getElementById('modal-content');
 
-// --- 6. モーダル制御 ---
+// --- 7. モーダル制御 ---
 function openModal(contentHtml) {
   modalContentEl.innerHTML = contentHtml;
   modalContainerEl.classList.remove('hidden');
@@ -200,9 +262,9 @@ function closeModal() {
 
 modalBackdropEl.addEventListener('click', closeModal);
 
-// --- 7. 各画面のレンダリング (Render Screens) ---
+// --- 8. 各画面のレンダリング (Render Screens) ---
 
-// 7-1. ログイン画面
+// 8-1. ログイン画面
 function renderLoginScreen() {
   bottomNavEl.classList.add('hidden');
   
@@ -217,35 +279,53 @@ function renderLoginScreen() {
       </div>
 
       <div class="login-card">
-        <p class="login-description">
+        <p class="login-description" style="margin-bottom: var(--space-md);">
           無駄な機能を省いた少人数向け共有カレンダーです。
         </p>
         
-        <div class="btn-group">
-          <button class="btn btn-primary" id="btn-login-a">「${state.userAName}」として入る</button>
-          <button class="btn btn-secondary" id="btn-login-b">パートナー「${state.userBName}」として入る</button>
-        </div>
+        <form id="form-login-signup">
+          <div class="form-group" style="margin-bottom: var(--space-md);">
+            <label class="form-label" for="login-username">あなたの名前</label>
+            <input class="form-input" type="text" id="login-username" placeholder="例: たろう" required maxlength="10" autofocus>
+          </div>
+          <button class="btn btn-primary" type="submit">カレンダーを始める</button>
+        </form>
       </div>
     </div>
   `;
 
   // イベント登録
-  document.getElementById('btn-login-a').addEventListener('click', () => {
+  document.getElementById('form-login-signup').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = document.getElementById('login-username').value.trim();
+    if (!name) return;
+
     state.isLoggedIn = true;
     state.currentUser = 'user-a';
-    saveLoginStatus();
-    initAppView();
-  });
+    state.userAName = name;
+    state.userBName = 'パートナー';
+    state.isSynced = false;
+    state.syncCode = '';
 
-  document.getElementById('btn-login-b').addEventListener('click', () => {
-    state.isLoggedIn = true;
-    state.currentUser = 'user-b';
+    // 初回コードがなければ生成
+    if (!state.myInviteCode) {
+      state.myInviteCode = generateRandomInviteCode();
+      localStorage.setItem('calm_my_invite_code', state.myInviteCode);
+    }
+
+    saveUserNamesToStorage();
+    saveSyncStatus();
     saveLoginStatus();
+    
+    // 新規開始時のため、LocalStorageをデフォルトのウェルカム予定1件のみでリセット
+    state.events = [...DEFAULT_EVENTS];
+    saveEventsToStorage();
+
     initAppView();
   });
 }
 
-// 7-2. カレンダー画面 (メイン)
+// 8-2. カレンダー画面 (メイン)
 function renderCalendarScreen() {
   const { currentYear, currentMonth, selectedDate } = state;
   const monthName = `${currentYear}年 ${currentMonth + 1}月`;
@@ -286,8 +366,8 @@ function renderCalendarScreen() {
   // 選択日の予定を取得
   let dayEvents = state.events.filter(e => {
     if (e.date !== selectedDate) return false;
-    // 未同期状態のときは、パートナー(user-b)が作った予定は除外する
-    if (!state.isSynced && e.createdBy === 'user-b') return false;
+    // 未同期状態のときは、自分以外の予定は除外する
+    if (!state.isSynced && e.createdBy !== state.currentUser) return false;
     return true;
   });
   // 時間昇順でソート
@@ -397,7 +477,7 @@ function renderDayCell(day, dateStr, isOtherMonth) {
   // 予定があるかチェック (未同期なら自分の予定のみ、または祝日)
   const hasEvent = state.events.some(e => {
     if (e.date !== dateStr) return false;
-    if (!state.isSynced && e.createdBy === 'user-b') return false;
+    if (!state.isSynced && e.createdBy !== state.currentUser) return false;
     return true;
   }) || !!holidayName;
   const dotHtml = hasEvent ? `<div class="event-dot"></div>` : '';
@@ -549,6 +629,7 @@ function showEventDetails(eventId) {
       if (confirm('この予定を削除してもよろしいですか？')) {
         state.events = state.events.filter(e => e.id !== eventId);
         saveEventsToStorage();
+        uploadEventsToServer(); // サーバーと同期
         closeModal();
         renderCalendarScreen();
       }
@@ -556,7 +637,7 @@ function showEventDetails(eventId) {
   }
 }
 
-// 7-4. 予定追加フォーム
+// 8-4. 予定追加フォーム
 function showAddEventForm() {
   const contentHtml = `
     <div class="modal-header">
@@ -623,6 +704,7 @@ function showAddEventForm() {
 
     state.events.push(newEvent);
     saveEventsToStorage();
+    uploadEventsToServer(); // サーバーと同期
     closeModal();
     // 予定を追加した日付を選択状態にする
     state.selectedDate = newEvent.date;
@@ -634,7 +716,7 @@ function showAddEventForm() {
   });
 }
 
-// 7-5. 予定編集フォーム
+// 8-5. 予定編集フォーム
 function showEditEventForm(event) {
   let currentHour = '12';
   let currentMinute = '00';
@@ -705,6 +787,7 @@ function showEditEventForm(event) {
     event.note = document.getElementById('evt-edit-note').value;
 
     saveEventsToStorage();
+    uploadEventsToServer(); // サーバーと同期
     closeModal();
     // 編集した日付を選択状態にする
     state.selectedDate = event.date;
@@ -716,9 +799,9 @@ function showEditEventForm(event) {
   });
 }
 
-// 7-6. メンバー共有画面 (複数人共有)
+// 8-6. メンバー共有画面 (複数人共有)
 function renderMembersScreen() {
-  const code = 'CALM-7781-LOVE'; // デモ用の共有コード
+  const code = state.myInviteCode; // 自分の招待コード
 
   // 招待ボックス (自分のコード表示) は連携状態に関わらず常に表示する
   const inviteBoxHtml = `
@@ -775,23 +858,12 @@ function renderMembersScreen() {
           Calm Calendarは1つの共有グループ専用カレンダーです。重複して他のカレンダーグループと接続することはできません。
         </p>
         <button class="btn btn-danger" id="btn-disconnect" style="padding: var(--space-sm); font-size: 12px; border-radius: var(--radius-sm);">
-          連携を解除する (デモ用)
+          連携を解除する
         </button>
       </div>
 
       <!-- 招待コードの発行 (共有中でも必要) -->
       ${inviteBoxHtml}
-
-      <!-- デモ用のシミュレーション機能 -->
-      <div class="login-card" style="margin-bottom: var(--space-xl);">
-        <h3 class="section-title">デモ: ユーザーの切り替え</h3>
-        <p class="login-description">
-          現在は「<strong>${getCurrentUserName()}</strong>」としてログインしています。パートナーが登録した予定をシミュレートするには、ユーザーを切り替えてください。
-        </p>
-        <button class="btn btn-secondary" id="btn-toggle-user">
-          「${getPartnerName()}」に切り替える
-        </button>
-      </div>
     `;
   } else {
     // 2. 未同期（未接続）状態のUI
@@ -818,7 +890,7 @@ function renderMembersScreen() {
         <h3 class="invite-title">招待コードを入力して同期</h3>
         <p class="invite-desc">受け取った招待コードを入力すると、カレンダーが接続されます。</p>
         <form id="form-join-calendar" style="display: flex; gap: var(--space-xs); margin-top: var(--space-sm);">
-          <input class="form-input" type="text" id="join-code-input" placeholder="例: CALM-7781-LOVE" required style="flex: 1; text-align: center; text-transform: uppercase; font-family: monospace; letter-spacing: 0.05em; padding: var(--space-sm);">
+          <input class="form-input" type="text" id="join-code-input" placeholder="例: CALM-XXXX-XXXX" required style="flex: 1; text-align: center; text-transform: uppercase; font-family: monospace; letter-spacing: 0.05em; padding: var(--space-sm);">
           <button class="btn btn-primary" type="submit" style="width: auto; padding: 0 var(--space-lg); white-space: nowrap;">同期</button>
         </form>
       </div>
@@ -860,16 +932,20 @@ function renderMembersScreen() {
 
   // 連携中の場合のみのイベント
   if (state.isSynced) {
-    document.getElementById('btn-toggle-user').addEventListener('click', () => {
-      state.currentUser = state.currentUser === 'user-a' ? 'user-b' : 'user-a';
-      saveLoginStatus();
-      renderMembersScreen();
-    });
-
     document.getElementById('btn-disconnect').addEventListener('click', () => {
       if (confirm('パートナーとの連携を解除しますか？（解除するとパートナーの予定は表示されなくなります）')) {
         state.isSynced = false;
+        state.syncCode = '';
         state.currentUser = 'user-a'; // 自分のアカウントに戻す
+        
+        // 連携解除の際、パートナーが作った予定をカレンダーから消去する
+        state.events = state.events.filter(e => e.createdBy === 'user-a');
+        state.userBName = 'パートナー'; // パートナー名を初期化
+        state.myInviteCode = generateRandomInviteCode(); // 自分のコードを新しく作り直す
+        localStorage.setItem('calm_my_invite_code', state.myInviteCode);
+
+        saveEventsToStorage();
+        saveUserNamesToStorage();
         saveSyncStatus();
         saveLoginStatus();
         renderMembersScreen();
@@ -879,23 +955,114 @@ function renderMembersScreen() {
     // 未連携の場合のみのイベント
     const joinForm = document.getElementById('form-join-calendar');
     if (joinForm) {
-      joinForm.addEventListener('submit', (e) => {
+      joinForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const inputCode = document.getElementById('join-code-input').value.trim().toUpperCase();
-        if (inputCode === code) {
+        if (!inputCode.startsWith('CALM-')) {
+          alert('正しい招待コードの形式ではありません。');
+          return;
+        }
+
+        if (inputCode === state.myInviteCode) {
+          alert('自分自身の招待コードを入力することはできません。');
+          return;
+        }
+
+        let isLocalFallback = false;
+        let serverData = null;
+
+        try {
+          // 入力されたコードでサーバー上の既存データをチェック
+          const res = await fetch(`/api/sync?code=${inputCode}`);
+          if (res.status === 503 || res.status === 404) {
+            isLocalFallback = true;
+          } else if (!res.ok) {
+            throw new Error('サーバー通信エラー');
+          } else {
+            serverData = await res.json();
+          }
+        } catch (error) {
+          console.warn('Sync connection failed. Falling back to local simulation:', error);
+          isLocalFallback = true;
+        }
+
+        if (isLocalFallback) {
+          // DB未接続やローカルスタンドアロンの場合、擬似接続で動作確認をさせる
+          alert('接続に成功しました！(スタンドアロンモードでの擬似同期)');
           state.isSynced = true;
+          state.syncCode = inputCode;
+          state.currentUser = 'user-b'; // 参加者側になる
+          state.userAName = 'パートナー';
+          
+          // 擬似的な初期予定を追加
+          const demoEvents = [
+            {
+              id: "partner-event-1",
+              title: "ふたりで晩ごはん",
+              date: getOffsetDateString(1),
+              time: "19:00",
+              note: "駅前の和食屋さんで晩ごはん。",
+              createdBy: "user-a"
+            }
+          ];
+          demoEvents.forEach(pe => {
+            if (!state.events.some(e => e.id === pe.id)) {
+              state.events.push(pe);
+            }
+          });
+          saveEventsToStorage();
           saveSyncStatus();
-          alert('接続に成功しました！カレンダーが最新の状態に同期されました。');
+          saveLoginStatus();
+          saveUserNamesToStorage();
           renderMembersScreen();
-        } else {
-          alert('コードが正しくありません。再度ご確認ください。');
+          return;
+        }
+
+        try {
+          state.isSynced = true;
+          state.syncCode = inputCode;
+          state.currentUser = 'user-b'; // 招待コードを入力した側なので、user-b (参加者) となる
+
+          // サーバー側にデータがすでに存在し、名前がある場合
+          if (serverData && serverData.userAName) {
+            state.userAName = serverData.userAName; // 相手の名前を user-a として取得
+          } else {
+            state.userAName = 'パートナー';
+          }
+          // 自分の名前はログインした時の名前なので、現在の userAName (ログイン時に入力された state.userAName) を userBName に退避・マッピング
+          state.userBName = localStorage.getItem('calm_user_a_name') || 'あなた'; 
+
+          // 予定の結合
+          const mergedEvents = serverData ? [...serverData.events] : [];
+          state.events.forEach(myEv => {
+            // 重複していない自分の予定（user-bとしての予定）をマージ
+            if (!mergedEvents.some(se => se.id === myEv.id)) {
+              myEv.createdBy = 'user-b'; // 自分の役割を user-b に変更
+              mergedEvents.push(myEv);
+            }
+          });
+          state.events = mergedEvents;
+
+          saveEventsToStorage();
+          saveUserNamesToStorage();
+          saveSyncStatus();
+          saveLoginStatus();
+
+          // サーバーに最新の結合データをアップロード
+          await uploadEventsToServer();
+
+          alert(`接続に成功しました！カレンダーが同期されました。`);
+          renderMembersScreen();
+        } catch (error) {
+          console.error(error);
+          alert('同期処理でエラーが発生しました。インターネット接続を確認し、再度お試しください。');
         }
       });
     }
   }
 }
 
-// 7-7. 設定画面
+// 8-7. 設定画面
 function renderSettingsScreen() {
   appEl.innerHTML = `
     <div class="fade-in">
@@ -924,7 +1091,7 @@ function renderSettingsScreen() {
         <div class="settings-section mt-md">
           <h3 class="section-title">データとアカウント</h3>
           <div class="settings-item" id="btn-reset-demo">
-            <span class="settings-item-label" style="color: var(--danger-color);">デモデータの初期化</span>
+            <span class="settings-item-label" style="color: var(--danger-color);">データの初期化</span>
             <span class="settings-item-val">初期状態に戻す</span>
           </div>
           <div class="settings-item" id="btn-logout" style="margin-top: 4px;">
@@ -944,16 +1111,21 @@ function renderSettingsScreen() {
 
   // イベント登録
   // 名前保存
-  document.getElementById('btn-save-username').addEventListener('click', () => {
+  document.getElementById('btn-save-username').addEventListener('click', async () => {
     const newName = document.getElementById('setting-username').value.trim();
     if (!newName) return;
     
     if (state.currentUser === 'user-a') {
       state.userAName = newName;
+      localStorage.setItem('calm_user_a_name', newName);
     } else {
       state.userBName = newName;
+      localStorage.setItem('calm_user_b_name', newName);
     }
     saveUserNamesToStorage();
+    if (state.isSynced) {
+      await uploadEventsToServer(); // 名前変更をサーバーへ反映
+    }
     alert('表示名を変更しました');
     renderSettingsScreen();
   });
@@ -998,17 +1170,29 @@ function renderSettingsScreen() {
     openModal(contentHtml);
   });
 
-  // デモデータの初期化
+  // データの初期化
   document.getElementById('btn-reset-demo').addEventListener('click', () => {
     if (confirm('予定データなどを初期状態に戻してもよろしいですか？（現在の予定はすべて消去されます）')) {
-      localStorage.removeItem('awai_events');
-      localStorage.removeItem('awai_user_a_name');
-      localStorage.removeItem('awai_user_b_name');
+      // calm_ で始まるストレージを削除
+      localStorage.removeItem('calm_events');
+      localStorage.removeItem('calm_user_a_name');
+      localStorage.removeItem('calm_user_b_name');
+      localStorage.removeItem('calm_is_synced');
+      localStorage.removeItem('calm_sync_code');
+      localStorage.removeItem('calm_my_invite_code');
+
       state.userAName = 'あなた';
-      state.userBName = 'はるか';
+      state.userBName = 'パートナー';
+      state.isSynced = false;
+      state.syncCode = '';
+      state.myInviteCode = generateRandomInviteCode();
+      localStorage.setItem('calm_my_invite_code', state.myInviteCode);
       state.events = [...DEFAULT_EVENTS];
+      
       saveEventsToStorage();
       saveUserNamesToStorage();
+      saveSyncStatus();
+      
       alert('初期化が完了しました。');
       renderSettingsScreen();
     }
@@ -1024,9 +1208,9 @@ function renderSettingsScreen() {
   });
 }
 
-// --- 8. ルーティング & 表示制御 (Routing Control) ---
+// --- 9. ルーティング & 表示制御 (Routing Control) ---
 
-function initAppView() {
+async function initAppView() {
   if (!state.isLoggedIn) {
     renderLoginScreen();
     return;
@@ -1037,8 +1221,14 @@ function initAppView() {
 
   // 現在のタブに応じて描画
   if (state.activeTab === 'calendar') {
+    if (state.isSynced) {
+      await fetchEventsFromServer(); // 描画前に最新の同期を行う
+    }
     renderCalendarScreen();
   } else if (state.activeTab === 'members') {
+    if (state.isSynced) {
+      await fetchEventsFromServer();
+    }
     renderMembersScreen();
   } else if (state.activeTab === 'settings') {
     renderSettingsScreen();
@@ -1062,15 +1252,21 @@ function updateNavIndicator() {
 }
 
 // ナビゲーションバーのイベントバインド
-document.getElementById('nav-calendar').addEventListener('click', () => {
+document.getElementById('nav-calendar').addEventListener('click', async () => {
   state.activeTab = 'calendar';
   updateNavIndicator();
+  if (state.isSynced) {
+    await fetchEventsFromServer();
+  }
   renderCalendarScreen();
 });
 
-document.getElementById('nav-members').addEventListener('click', () => {
+document.getElementById('nav-members').addEventListener('click', async () => {
   state.activeTab = 'members';
   updateNavIndicator();
+  if (state.isSynced) {
+    await fetchEventsFromServer();
+  }
   renderMembersScreen();
 });
 
@@ -1091,7 +1287,7 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// --- 9. アプリ初期起動処理 ---
+// --- 10. アプリ初期起動処理 ---
 window.addEventListener('DOMContentLoaded', () => {
   loadStateFromStorage();
 
@@ -1101,5 +1297,29 @@ window.addEventListener('DOMContentLoaded', () => {
     addEventBtn.addEventListener('click', showAddEventForm);
   }
 
+  // 自動同期 (ポーリング: 30秒ごと)
+  setInterval(async () => {
+    if (state.isLoggedIn && state.isSynced) {
+      const oldEvents = JSON.stringify(state.events);
+      const oldUserAName = state.userAName;
+      const oldUserBName = state.userBName;
+      
+      await fetchEventsFromServer();
+      
+      const hasChanged = oldEvents !== JSON.stringify(state.events) || 
+                         oldUserAName !== state.userAName || 
+                         oldUserBName !== state.userBName;
+                         
+      if (hasChanged) {
+        if (state.activeTab === 'calendar') {
+          renderCalendarScreen();
+        } else if (state.activeTab === 'members') {
+          renderMembersScreen();
+        }
+      }
+    }
+  }, 30000);
+
   initAppView();
 });
+
