@@ -169,10 +169,10 @@ async function fetchEventsFromServer() {
       
       // 名前の同期
       if (state.currentUser === 'user-a') {
-        if (data.userAName) state.userAName = data.userAName;
+        // 自分の名前(user-a)はローカルを正とし、相手(user-b)の名前のみ同期
         if (data.userBName) state.userBName = data.userBName;
       } else {
-        if (data.userBName) state.userBName = data.userBName;
+        // 自分の名前(user-b)はローカルを正とし、相手(user-a)の名前のみ同期
         if (data.userAName) state.userAName = data.userAName;
       }
 
@@ -212,6 +212,35 @@ async function uploadEventsToServer() {
     console.error('Sync error (POST):', err);
   }
 }
+
+// サーバー上に自分の部屋（招待コード用の枠）を初期登録する (未同期のとき)
+async function initializeRoomOnServer() {
+  if (state.isSynced || !state.myInviteCode) return;
+
+  try {
+    const res = await fetch('/api/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        code: state.myInviteCode,
+        data: {
+          events: state.events,
+          userAName: state.userAName,
+          userBName: '' // 相手はまだいない
+        }
+      })
+    });
+    if (res.status === 503) {
+      console.warn('Database not configured. Room initialization bypassed.');
+      return;
+    }
+  } catch (err) {
+    console.error('Room init error (POST):', err);
+  }
+}
+
 
 // --- 5. ユーティリティ & 補助関数 ---
 function getCurrentUserName() {
@@ -320,6 +349,7 @@ function renderLoginScreen() {
     // 新規開始時のため、LocalStorageをデフォルトのウェルカム予定1件のみでリセット
     state.events = [...DEFAULT_EVENTS];
     saveEventsToStorage();
+    initializeRoomOnServer(); // サーバー上に部屋を作成
 
     initAppView();
   });
@@ -629,7 +659,11 @@ function showEventDetails(eventId) {
       if (confirm('この予定を削除してもよろしいですか？')) {
         state.events = state.events.filter(e => e.id !== eventId);
         saveEventsToStorage();
-        uploadEventsToServer(); // サーバーと同期
+        if (state.isSynced) {
+          uploadEventsToServer(); // サーバーと同期
+        } else {
+          initializeRoomOnServer(); // 未連携時は自分のデータを更新しておく
+        }
         closeModal();
         renderCalendarScreen();
       }
@@ -704,7 +738,11 @@ function showAddEventForm() {
 
     state.events.push(newEvent);
     saveEventsToStorage();
-    uploadEventsToServer(); // サーバーと同期
+    if (state.isSynced) {
+      uploadEventsToServer(); // サーバーと同期
+    } else {
+      initializeRoomOnServer(); // 未連携時は自分のデータを更新しておく
+    }
     closeModal();
     // 予定を追加した日付を選択状態にする
     state.selectedDate = newEvent.date;
@@ -787,7 +825,11 @@ function showEditEventForm(event) {
     event.note = document.getElementById('evt-edit-note').value;
 
     saveEventsToStorage();
-    uploadEventsToServer(); // サーバーと同期
+    if (state.isSynced) {
+      uploadEventsToServer(); // サーバーと同期
+    } else {
+      initializeRoomOnServer(); // 未連携時は自分のデータを更新しておく
+    }
     closeModal();
     // 編集した日付を選択状態にする
     state.selectedDate = event.date;
@@ -1125,6 +1167,8 @@ function renderSettingsScreen() {
     saveUserNamesToStorage();
     if (state.isSynced) {
       await uploadEventsToServer(); // 名前変更をサーバーへ反映
+    } else {
+      await initializeRoomOnServer(); // 未連携時は自分のデータを更新しておく
     }
     alert('表示名を変更しました');
     renderSettingsScreen();
@@ -1297,9 +1341,12 @@ window.addEventListener('DOMContentLoaded', () => {
     addEventBtn.addEventListener('click', showAddEventForm);
   }
 
-  // 自動同期 (ポーリング: 30秒ごと)
+  // 自動同期 (ポーリング: 15秒ごと)
   setInterval(async () => {
-    if (state.isLoggedIn && state.isSynced) {
+    if (!state.isLoggedIn) return;
+
+    if (state.isSynced) {
+      // 連携済み状態の同期
       const oldEvents = JSON.stringify(state.events);
       const oldUserAName = state.userAName;
       const oldUserBName = state.userBName;
@@ -1317,8 +1364,42 @@ window.addEventListener('DOMContentLoaded', () => {
           renderMembersScreen();
         }
       }
+    } else {
+      // 未連携状態での接続待ちポーリング
+      if (!state.myInviteCode) return;
+      try {
+        const res = await fetch(`/api/sync?code=${state.myInviteCode}`);
+        if (res.ok) {
+          const data = await res.json();
+          // 誰かが自分のコードを入力して同期した場合
+          if (data && data.userBName) {
+            state.isSynced = true;
+            state.syncCode = state.myInviteCode;
+            state.currentUser = 'user-a'; // 自分が作成者
+            state.userBName = data.userBName;
+            state.events = data.events;
+            
+            saveEventsToStorage();
+            saveUserNamesToStorage();
+            saveSyncStatus();
+            saveLoginStatus();
+            
+            // 即座にサーバーへ自分の情報を含めて最新化
+            await uploadEventsToServer();
+            
+            alert(`パートナー「${data.userBName}」があなたの招待コードを入力し、同期されました！`);
+            initAppView();
+          }
+        }
+      } catch (err) {
+        // ローカル環境等のエラーは無視
+      }
     }
-  }, 30000);
+  }, 15000);
+
+  if (state.isLoggedIn && !state.isSynced) {
+    initializeRoomOnServer(); // 起動時に部屋データを確保
+  }
 
   initAppView();
 });
