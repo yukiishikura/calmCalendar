@@ -768,12 +768,12 @@ function showAddEventForm() {
         <input class="form-input" type="text" id="evt-title" required placeholder="例: カフェでお茶をする" autofocus>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr auto; gap: var(--space-md); margin-bottom: var(--space-lg);">
-        <div class="form-group" style="margin-bottom: 0;">
+      <div style="display: grid; grid-template-columns: 120px 1fr; gap: var(--space-md); margin-bottom: var(--space-lg);">
+        <div class="form-group" style="margin-bottom: 0; width: 120px;">
           <label class="form-label" for="evt-date">\u65e5\u4ed8</label>
-          <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required style="padding: 0 8px !important; height: 40px !important; line-height: 40px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
+          <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required style="padding: 0 8px !important; height: 40px !important; line-height: 40px !important; box-sizing: border-box !important; width: 100% !important; min-width: 0; font-size: 13px;">
         </div>
-        <div class="form-group" style="margin-bottom: 0;">
+        <div class="form-group" style="margin-bottom: 0; width: 146px; margin-left: auto;">
           <label class="form-label">\u6642\u9593</label>
           <div style="display: flex; gap: var(--space-xs); align-items: center; height: 40px;">
             <select class="form-input" id="evt-time-hour" style="width: 64px !important; text-align: center; text-align-last: center; padding: 0 18px 0 6px !important; height: 40px !important; line-height: 40px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
@@ -863,12 +863,12 @@ function showEditEventForm(event) {
         <input class="form-input" type="text" id="evt-edit-title" value="${escapeHtml(event.title)}" required placeholder="例: カフェでお茶をする">
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr auto; gap: var(--space-md); margin-bottom: var(--space-lg);">
-        <div class="form-group" style="margin-bottom: 0;">
+      <div style="display: grid; grid-template-columns: 120px 1fr; gap: var(--space-md); margin-bottom: var(--space-lg);">
+        <div class="form-group" style="margin-bottom: 0; width: 120px;">
           <label class="form-label" for="evt-edit-date">\u65e5\u4ed8</label>
-          <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required style="padding: 0 8px !important; height: 40px !important; line-height: 40px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
+          <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required style="padding: 0 8px !important; height: 40px !important; line-height: 40px !important; box-sizing: border-box !important; width: 100% !important; min-width: 0; font-size: 13px;">
         </div>
-        <div class="form-group" style="margin-bottom: 0;">
+        <div class="form-group" style="margin-bottom: 0; width: 146px; margin-left: auto;">
           <label class="form-label">\u6642\u9593</label>
           <div style="display: flex; gap: var(--space-xs); align-items: center; height: 40px;">
             <select class="form-input" id="evt-edit-time-hour" style="width: 64px !important; text-align: center; text-align-last: center; padding: 0 18px 0 6px !important; height: 40px !important; line-height: 40px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
