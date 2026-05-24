@@ -768,19 +768,19 @@ function showAddEventForm() {
         <input class="form-input" type="text" id="evt-title" required placeholder="例: カフェでお茶をする" autofocus>
       </div>
 
-      <div style="display: grid; grid-template-columns: 4fr 6fr; gap: var(--space-md);">
-        <div class="form-group">
+      <div style="display: grid; grid-template-columns: 3.5fr 6.5fr; gap: var(--space-md); margin-bottom: var(--space-lg);">
+        <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label" for="evt-date">\u65e5\u4ed8</label>
-          <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required style="padding: 0 8px; height: 46px; min-width: 0;">
+          <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required style="padding: 0 8px !important; height: 42px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label">\u6642\u9593</label>
-          <div style="display: flex; gap: var(--space-sm); align-items: center; height: 46px;">
-            <select class="form-input" id="evt-time-hour" style="flex: 1; text-align: center; text-align-last: center; padding: 0 16px 0 8px; height: 46px; min-width: 0;">
+          <div style="display: flex; gap: var(--space-xs); align-items: center; height: 42px;">
+            <select class="form-input" id="evt-time-hour" style="flex: 1; text-align: center; text-align-last: center; padding: 0 18px 0 6px !important; height: 42px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
               ${Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === '12' ? 'selected' : ''}>${h}</option>`).join('')}
             </select>
-            <span style="color: var(--text-muted);">:</span>
-            <select class="form-input" id="evt-time-minute" style="flex: 1; text-align: center; text-align-last: center; padding: 0 16px 0 8px; height: 46px; min-width: 0;">
+            <span style="color: var(--text-muted); line-height: 1; font-weight: 500;">:</span>
+            <select class="form-input" id="evt-time-minute" style="flex: 1; text-align: center; text-align-last: center; padding: 0 18px 0 6px !important; height: 42px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
               <option value="00" selected>00</option>
               <option value="10">10</option>
               <option value="20">20</option>
@@ -863,19 +863,19 @@ function showEditEventForm(event) {
         <input class="form-input" type="text" id="evt-edit-title" value="${escapeHtml(event.title)}" required placeholder="例: カフェでお茶をする">
       </div>
 
-      <div style="display: grid; grid-template-columns: 4fr 6fr; gap: var(--space-md);">
-        <div class="form-group">
+      <div style="display: grid; grid-template-columns: 3.5fr 6.5fr; gap: var(--space-md); margin-bottom: var(--space-lg);">
+        <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label" for="evt-edit-date">\u65e5\u4ed8</label>
-          <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required style="padding: 0 8px; height: 46px; min-width: 0;">
+          <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required style="padding: 0 8px !important; height: 42px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label">\u6642\u9593</label>
-          <div style="display: flex; gap: var(--space-sm); align-items: center; height: 46px;">
-            <select class="form-input" id="evt-edit-time-hour" style="flex: 1; text-align: center; text-align-last: center; padding: 0 16px 0 8px; height: 46px; min-width: 0;">
+          <div style="display: flex; gap: var(--space-xs); align-items: center; height: 42px;">
+            <select class="form-input" id="evt-edit-time-hour" style="flex: 1; text-align: center; text-align-last: center; padding: 0 18px 0 6px !important; height: 42px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
               ${Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === currentHour ? 'selected' : ''}>${h}</option>`).join('')}
             </select>
-            <span style="color: var(--text-muted);">:</span>
-            <select class="form-input" id="evt-edit-time-minute" style="flex: 1; text-align: center; text-align-last: center; padding: 0 16px 0 8px; height: 46px; min-width: 0;">
+            <span style="color: var(--text-muted); line-height: 1; font-weight: 500;">:</span>
+            <select class="form-input" id="evt-edit-time-minute" style="flex: 1; text-align: center; text-align-last: center; padding: 0 18px 0 6px !important; height: 42px !important; box-sizing: border-box !important; min-width: 0; font-size: 13px;">
               ${['00', '10', '20', '30', '40', '50'].map(m => `<option value="${m}" ${m === currentMinute ? 'selected' : ''}>${m}</option>`).join('')}
             </select>
           </div>

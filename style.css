@@ -304,6 +304,25 @@ body {
   border-color: var(--accent-color);
 }
 
+select.form-input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238A8880' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 10px;
+}
+
+/* iOS/Safariにおける日付入力の高さ・余白ズレ解消 */
+input[type="date"]::-webkit-date-and-time-value {
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 1em !important;
+  line-height: normal !important;
+}
+
+
 /* --- 7. カレンダー画面レイアウト --- */
 .calendar-header {
   display: flex;
