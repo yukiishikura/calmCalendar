@@ -1161,6 +1161,7 @@ function renderMembersScreen() {
       });
     }
   }
+}
 
 // 8-7. 險ｭ螳夂判髱｢ 設定画面
 function renderSettingsScreen() {
