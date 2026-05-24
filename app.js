@@ -768,19 +768,19 @@ function showAddEventForm() {
         <input class="form-input" type="text" id="evt-title" required placeholder="例: カフェでお茶をする" autofocus>
       </div>
 
-      <div style="display: grid; grid-template-columns: 4fr 6fr; gap: var(--space-sm);">
+      <div style="display: grid; grid-template-columns: 4fr 6fr; gap: var(--space-md);">
         <div class="form-group">
           <label class="form-label" for="evt-date">\u65e5\u4ed8</label>
-          <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required style="padding: var(--space-md) var(--space-xs); min-width: 0;">
+          <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required style="padding: var(--space-md) 4px; min-width: 0;">
         </div>
         <div class="form-group">
           <label class="form-label">\u6642\u9593</label>
-          <div style="display: flex; gap: var(--space-xs); align-items: center;">
-            <select class="form-input" id="evt-time-hour" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 4px; min-width: 0;">
+          <div style="display: flex; gap: var(--space-sm); align-items: center;">
+            <select class="form-input" id="evt-time-hour" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 12px; min-width: 0;">
               ${Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === '12' ? 'selected' : ''}>${h}</option>`).join('')}
             </select>
             <span style="color: var(--text-muted);">:</span>
-            <select class="form-input" id="evt-time-minute" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 4px; min-width: 0;">
+            <select class="form-input" id="evt-time-minute" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 12px; min-width: 0;">
               <option value="00" selected>00</option>
               <option value="10">10</option>
               <option value="20">20</option>
@@ -863,19 +863,19 @@ function showEditEventForm(event) {
         <input class="form-input" type="text" id="evt-edit-title" value="${escapeHtml(event.title)}" required placeholder="例: カフェでお茶をする">
       </div>
 
-      <div style="display: grid; grid-template-columns: 4fr 6fr; gap: var(--space-sm);">
+      <div style="display: grid; grid-template-columns: 4fr 6fr; gap: var(--space-md);">
         <div class="form-group">
           <label class="form-label" for="evt-edit-date">\u65e5\u4ed8</label>
-          <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required style="padding: var(--space-md) var(--space-xs); min-width: 0;">
+          <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required style="padding: var(--space-md) 4px; min-width: 0;">
         </div>
         <div class="form-group">
           <label class="form-label">\u6642\u9593</label>
-          <div style="display: flex; gap: var(--space-xs); align-items: center;">
-            <select class="form-input" id="evt-edit-time-hour" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 4px; min-width: 0;">
+          <div style="display: flex; gap: var(--space-sm); align-items: center;">
+            <select class="form-input" id="evt-edit-time-hour" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 12px; min-width: 0;">
               ${Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === currentHour ? 'selected' : ''}>${h}</option>`).join('')}
             </select>
             <span style="color: var(--text-muted);">:</span>
-            <select class="form-input" id="evt-edit-time-minute" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 4px; min-width: 0;">
+            <select class="form-input" id="evt-edit-time-minute" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 12px; min-width: 0;">
               ${['00', '10', '20', '30', '40', '50'].map(m => `<option value="${m}" ${m === currentMinute ? 'selected' : ''}>${m}</option>`).join('')}
             </select>
           </div>
@@ -1221,6 +1221,10 @@ function renderSettingsScreen() {
             <span class="settings-item-label">ホーム画面に追加する</span>
             <span class="pwa-badge">設定方法</span>
           </div>
+          <div class="settings-item" id="btn-update-app" style="margin-top: 4px;">
+            <span class="settings-item-label">アプリを最新の状態に更新</span>
+            <span class="pwa-badge" style="background-color: var(--accent-light); color: var(--accent-color);">更新する</span>
+          </div>
         </div>
 
         <!-- データ・その他 -->
@@ -1307,6 +1311,36 @@ function renderSettingsScreen() {
     `;
     openModal(contentHtml);
   });
+
+  // アプリを最新の状態に更新する（キャッシュ削除＆SW強制アップデート＆リロード）
+  const updateBtn = document.getElementById('btn-update-app');
+  if (updateBtn) {
+    updateBtn.addEventListener('click', async () => {
+      if (confirm('アプリを最新バージョンに更新しますか？\n（これまで作成した予定や共有連携データは失われません）')) {
+        try {
+          // 1. キャッシュストレージの全クリア
+          if ('caches' in window) {
+            const cacheKeys = await caches.keys();
+            await Promise.all(cacheKeys.map(key => caches.delete(key)));
+          }
+          
+          // 2. 登録されている全Service Workerの強制更新
+          if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (let reg of registrations) {
+              await reg.update();
+            }
+          }
+          
+          alert('アプリの更新準備が整いました。最新化するためにページをリロードします。');
+          window.location.reload(true);
+        } catch (err) {
+          console.error('Update failed:', err);
+          window.location.reload();
+        }
+      }
+    });
+  }
 
   // データの初期化
   document.getElementById('btn-reset-demo').addEventListener('click', () => {

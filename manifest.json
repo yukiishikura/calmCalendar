@@ -1,6 +1,6 @@
 {
   "name": "Calm Calendar",
-  "short_name": "Calm",
+  "short_name": "CalmCalendar",
   "description": "無駄な機能を省いた少人数向け共有カレンダーです。",
   "start_url": "/",
   "display": "standalone",
