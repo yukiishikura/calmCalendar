@@ -736,12 +736,12 @@ function showEventDetails(eventId) {
       showEditEventForm(event);
     });
 
-    document.getElementById('btn-delete-event').addEventListener('click', () => {
+    document.getElementById('btn-delete-event').addEventListener('click', async () => {
       if (confirm('この予定を削除してもよろしいですか？')) {
         state.events = state.events.filter(e => e.id !== eventId);
         saveEventsToStorage();
         if (state.isSynced) {
-          uploadEventsToServer(); // サーバーと同期
+          await uploadEventsToServer(); // サーバーと同期を待つ
         } else {
           initializeRoomOnServer(); // 未連携時は自分のデータを更新しておく
         }
@@ -806,7 +806,7 @@ function showAddEventForm() {
   openModal(contentHtml);
 
   // フォームサブミット
-  document.getElementById('form-event').addEventListener('submit', (e) => {
+  document.getElementById('form-event').addEventListener('submit', async (e) => {
     e.preventDefault();
     const newEvent = {
       id: 'evt-' + Date.now(),
@@ -820,7 +820,7 @@ function showAddEventForm() {
     state.events.push(newEvent);
     saveEventsToStorage();
     if (state.isSynced) {
-      uploadEventsToServer(); // サーバーと同期
+      await uploadEventsToServer(); // サーバーと同期を待つ
     } else {
       initializeRoomOnServer(); // 未連携時は自分のデータを更新しておく
     }
@@ -897,24 +897,42 @@ function showEditEventForm(event) {
   openModal(contentHtml);
 
   // フォームサブミット
-  document.getElementById('form-event-edit').addEventListener('submit', (e) => {
+  document.getElementById('form-event-edit').addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    event.title = document.getElementById('evt-edit-title').value;
-    event.date = document.getElementById('evt-edit-date').value;
-    event.time = `${document.getElementById('evt-edit-time-hour').value}:${document.getElementById('evt-edit-time-minute').value}`;
-    event.note = document.getElementById('evt-edit-note').value;
+    const titleVal = document.getElementById('evt-edit-title').value;
+    const dateVal = document.getElementById('evt-edit-date').value;
+    const timeVal = `${document.getElementById('evt-edit-time-hour').value}:${document.getElementById('evt-edit-time-minute').value}`;
+    const noteVal = document.getElementById('evt-edit-note').value;
+
+    // 最新の配列から該当のオブジェクトを検索して書き換える (編集中ポーリング対策)
+    const latestEvent = state.events.find(e => e.id === event.id);
+    if (latestEvent) {
+      latestEvent.title = titleVal;
+      latestEvent.date = dateVal;
+      latestEvent.time = timeVal;
+      latestEvent.note = noteVal;
+    } else {
+      state.events.push({
+        id: event.id,
+        title: titleVal,
+        date: dateVal,
+        time: timeVal,
+        note: noteVal,
+        createdBy: event.createdBy || state.currentUser
+      });
+    }
 
     saveEventsToStorage();
     if (state.isSynced) {
-      uploadEventsToServer(); // サーバーと同期
+      await uploadEventsToServer(); // サーバーと同期を待つ
     } else {
       initializeRoomOnServer(); // 未連携時は自分のデータを更新しておく
     }
     closeModal();
     // 編集した日付を選択状態にする
-    state.selectedDate = event.date;
-    const d = new Date(event.date);
+    state.selectedDate = dateVal;
+    const d = new Date(dateVal);
     state.currentYear = d.getFullYear();
     state.currentMonth = d.getMonth();
     
