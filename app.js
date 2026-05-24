@@ -80,17 +80,22 @@ function generateRandomInviteCode() {
 let state = {
   isLoggedIn: false,
   isSynced: false,
-  currentUser: 'user-a', // 'user-a' (カレンダー作成者) or 'user-b' (カレンダー参加者)
-  userAName: 'あなた',
-  userBName: 'パートナー',
-  myInviteCode: '', // 自分の招待コード
-  syncCode: '', // 同期に使用している共有コード
-  activeTab: 'calendar', // 'calendar' | 'members' | 'settings'
+  isLocalMode: false,
+  currentUser: 'user-a',
+  userAName: '縺ゅ↑縺・,
+  userBName: '繝代・繝医リ繝ｼ',
+  myInviteCode: '',
+  syncCode: '',
+  activeTab: 'calendar',
   currentYear: new Date().getFullYear(),
-  currentMonth: new Date().getMonth(), // 0-11
+  currentMonth: new Date().getMonth(),
   selectedDate: new Date().toISOString().split('T')[0],
   events: []
 };
+
+function isDefaultOrEmpty(name) {
+  return !name || name === '\u30d1\u30fc\u30c8\u30ca\u30fc' || name === '\u3042\u306a\u305f';
+}
 
 // --- 3. データ永続化 (LocalStorage) ---
 function loadStateFromStorage() {
@@ -125,8 +130,11 @@ function loadStateFromStorage() {
     localStorage.setItem('calm_my_invite_code', state.myInviteCode);
   }
 
-  const storedSyncCode = localStorage.getItem('calm_sync_code');
+    const storedSyncCode = localStorage.getItem('calm_sync_code');
   if (storedSyncCode) state.syncCode = storedSyncCode;
+
+  const storedLocalMode = localStorage.getItem('calm_is_local_mode');
+  state.isLocalMode = storedLocalMode === 'true';
 }
 
 function saveEventsToStorage() {
@@ -147,6 +155,7 @@ function saveLoginStatus() {
 function saveSyncStatus() {
   localStorage.setItem('calm_is_synced', state.isSynced ? 'true' : 'false');
   localStorage.setItem('calm_sync_code', state.syncCode);
+  localStorage.setItem('calm_is_local_mode', state.isLocalMode ? 'true' : 'false');
 }
 
 // --- 4. サーバー同期 API 連携 ---
@@ -155,24 +164,45 @@ function saveSyncStatus() {
 async function fetchEventsFromServer() {
   if (!state.isSynced || !state.syncCode) return;
 
-  try {
-    const res = await fetch(`/api/sync?code=${state.syncCode}`);
-    if (res.status === 503) {
-      console.warn('Database not configured. Working in local standalone mode.');
-      return;
-    }
-    if (!res.ok) throw new Error('Failed to fetch from server');
+  let data = null;
 
-    const data = await res.json();
-    
-    // パートナーによってカレンダーが削除（連携解除）されたことを検知
-    if (data && !data.userAName && !data.userBName) {
+  if (state.isLocalMode) {
+    const localDataStr = localStorage.getItem(`calm_local_sync:${state.syncCode}`);
+    if (localDataStr) {
+      try {
+        data = JSON.parse(localDataStr);
+      } catch (e) {
+        console.error('Failed to parse local sync data', e);
+      }
+    }
+  } else {
+    try {
+      const res = await fetch(`/api/sync?code=${state.syncCode}`);
+      if (res.status === 503 || res.status === 404) {
+        console.warn('Database not configured or room missing on server. Switching to local emulation.');
+        state.isLocalMode = true;
+        saveSyncStatus();
+        return fetchEventsFromServer();
+      }
+      if (!res.ok) throw new Error('Failed to fetch from server');
+      data = await res.json();
+    } catch (err) {
+      console.error('Sync error (GET):', err);
+      state.isLocalMode = true;
+      saveSyncStatus();
+      return fetchEventsFromServer();
+    }
+  }
+
+  if (data) {
+    if (!data.userAName && !data.userBName) {
       console.warn('Sync connection closed by partner.');
       state.isSynced = false;
       state.syncCode = '';
+      state.isLocalMode = false;
       state.currentUser = 'user-a';
       state.events = state.events.filter(e => e.createdBy === 'user-a');
-      state.userBName = 'パートナー';
+      state.userBName = '\u30d1\u30fc\u30c8\u30ca\u30fc';
       state.myInviteCode = generateRandomInviteCode();
       localStorage.setItem('calm_my_invite_code', state.myInviteCode);
       
@@ -181,63 +211,80 @@ async function fetchEventsFromServer() {
       saveSyncStatus();
       saveLoginStatus();
       
-      alert('パートナーとの連携が解除されました。');
+      alert('\u30d1\u30fc\u30c8\u30ca\u30fc\u3068\u306e\u9023\u643a\u304c\u89e3\u9664\u3055\u308c\u307e\u3057\u305f\u3002');
       initAppView();
       return;
     }
 
-    if (data && Array.isArray(data.events)) {
+    if (Array.isArray(data.events)) {
       state.events = data.events;
       
-      // 名前の同期
       if (state.currentUser === 'user-a') {
-        // 自分の名前(user-a)はローカルを正とし、相手(user-b)の名前のみ同期
-        if (data.userBName) state.userBName = data.userBName;
+        if (data.userBName && !isDefaultOrEmpty(data.userBName)) {
+          state.userBName = data.userBName;
+        }
       } else {
-        // 自分の名前(user-b)はローカルを正とし、相手(user-a)の名前のみ同期
-        if (data.userAName) state.userAName = data.userAName;
+        if (data.userAName && !isDefaultOrEmpty(data.userAName)) {
+          state.userAName = data.userAName;
+        }
       }
 
       saveEventsToStorage();
       saveUserNamesToStorage();
     }
-  } catch (err) {
-    console.error('Sync error (GET):', err);
   }
 }
 
-// サーバーへデータを送信する
 async function uploadEventsToServer() {
   if (!state.isSynced || !state.syncCode) return;
 
-  try {
-    const res = await fetch('/api/sync', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        code: state.syncCode,
-        data: {
-          events: state.events,
-          userAName: state.userAName,
-          userBName: state.userBName
-        }
-      })
-    });
-    if (res.status === 503) {
-      console.warn('Database not configured. Save cached locally.');
-      return;
+  const payload = {
+    events: state.events,
+    userAName: state.userAName,
+    userBName: state.userBName
+  };
+
+  if (state.isLocalMode) {
+    localStorage.setItem(`calm_local_sync:${state.syncCode}`, JSON.stringify(payload));
+  } else {
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          code: state.syncCode,
+          data: payload
+        })
+      });
+      if (res.status === 503) {
+        console.warn('Database not configured. Bypassing upload, saving to local emulation.');
+        state.isLocalMode = true;
+        saveSyncStatus();
+        localStorage.setItem(`calm_local_sync:${state.syncCode}`, JSON.stringify(payload));
+        return;
+      }
+      if (!res.ok) throw new Error('Failed to upload to server');
+    } catch (err) {
+      console.error('Sync error (POST):', err);
+      state.isLocalMode = true;
+      saveSyncStatus();
+      localStorage.setItem(`calm_local_sync:${state.syncCode}`, JSON.stringify(payload));
     }
-    if (!res.ok) throw new Error('Failed to upload to server');
-  } catch (err) {
-    console.error('Sync error (POST):', err);
   }
 }
 
-// サーバー上に自分の部屋（招待コード用の枠）を初期登録する (未同期のとき)
 async function initializeRoomOnServer() {
   if (state.isSynced || !state.myInviteCode) return;
+
+  const payload = {
+    events: state.events,
+    userAName: state.userAName,
+    userBName: ''
+  };
+
+  localStorage.setItem(`calm_local_sync:${state.myInviteCode}`, JSON.stringify(payload));
 
   try {
     const res = await fetch('/api/sync', {
@@ -247,15 +294,11 @@ async function initializeRoomOnServer() {
       },
       body: JSON.stringify({
         code: state.myInviteCode,
-        data: {
-          events: state.events,
-          userAName: state.userAName,
-          userBName: '' // 相手はまだいない
-        }
+        data: payload
       })
     });
     if (res.status === 503) {
-      console.warn('Database not configured. Room initialization bypassed.');
+      console.warn('Database not configured. API Room initialization bypassed.');
       return;
     }
   } catch (err) {
@@ -263,8 +306,7 @@ async function initializeRoomOnServer() {
   }
 }
 
-
-// --- 5. ユーティリティ & 補助関数 ---
+// --- 5. 繝ｦ繝ｼ繝・ぅ繝ｪ繝・ぅ & 陬懷勧髢｢謨ｰ --- ユーティリティ & 補助関数 ---
 function getCurrentUserName() {
   return state.currentUser === 'user-a' ? state.userAName : state.userBName;
 }
@@ -709,19 +751,19 @@ function showAddEventForm() {
         <input class="form-input" type="text" id="evt-title" required placeholder="例: カフェでお茶をする" autofocus>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: var(--space-md);">
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-sm);">
         <div class="form-group">
-          <label class="form-label" for="evt-date">日付</label>
-          <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required>
+          <label class="form-label" for="evt-date">\u65e5\u4ed8</label>
+          <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required style="padding: var(--space-md) var(--space-xs); min-width: 0;">
         </div>
         <div class="form-group">
-          <label class="form-label">時間</label>
+          <label class="form-label">\u6642\u9593</label>
           <div style="display: flex; gap: var(--space-xs); align-items: center;">
-            <select class="form-input" id="evt-time-hour" style="flex: 1; text-align: center; padding-right: 8px;">
+            <select class="form-input" id="evt-time-hour" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 4px; min-width: 0;">
               ${Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === '12' ? 'selected' : ''}>${h}</option>`).join('')}
             </select>
             <span style="color: var(--text-muted);">:</span>
-            <select class="form-input" id="evt-time-minute" style="flex: 1; text-align: center; padding-right: 8px;">
+            <select class="form-input" id="evt-time-minute" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 4px; min-width: 0;">
               <option value="00" selected>00</option>
               <option value="10">10</option>
               <option value="20">20</option>
@@ -804,19 +846,19 @@ function showEditEventForm(event) {
         <input class="form-input" type="text" id="evt-edit-title" value="${escapeHtml(event.title)}" required placeholder="例: カフェでお茶をする">
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: var(--space-md);">
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-sm);">
         <div class="form-group">
-          <label class="form-label" for="evt-edit-date">日付</label>
-          <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required>
+          <label class="form-label" for="evt-edit-date">\u65e5\u4ed8</label>
+          <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required style="padding: var(--space-md) var(--space-xs); min-width: 0;">
         </div>
         <div class="form-group">
-          <label class="form-label">時間</label>
+          <label class="form-label">\u6642\u9593</label>
           <div style="display: flex; gap: var(--space-xs); align-items: center;">
-            <select class="form-input" id="evt-edit-time-hour" style="flex: 1; text-align: center; padding-right: 8px;">
+            <select class="form-input" id="evt-edit-time-hour" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 4px; min-width: 0;">
               ${Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === currentHour ? 'selected' : ''}>${h}</option>`).join('')}
             </select>
             <span style="color: var(--text-muted);">:</span>
-            <select class="form-input" id="evt-edit-time-minute" style="flex: 1; text-align: center; padding-right: 8px;">
+            <select class="form-input" id="evt-edit-time-minute" style="flex: 1; text-align: center; padding: var(--space-md) 0; padding-right: 4px; min-width: 0;">
               ${['00', '10', '20', '30', '40', '50'].map(m => `<option value="${m}" ${m === currentMinute ? 'selected' : ''}>${m}</option>`).join('')}
             </select>
           </div>
@@ -997,16 +1039,18 @@ function renderMembersScreen() {
   // 連携中の場合のみのイベント
   if (state.isSynced) {
     document.getElementById('btn-disconnect').addEventListener('click', () => {
-      if (confirm('パートナーとの連携を解除しますか？（解除するとパートナーの予定は表示されなくなります）')) {
+      if (confirm('\u30d1\u30fc\u30c8\u30ca\u30fc\u3068\u306e\u9023\u643a\u3092\u89e3\u9664\u3057\u307e\u3059\u304b\uff1f\uff08\u89e3\u9664\u3059\u308b\u3068\u30d1\u30fc\u30c8\u30ca\u30fc\u306e\u4e88\u5b9a\u306f\u8868\u793a\u3055\u308c\u306a\u304f\u306a\u308a\u307e\u3059\uff09')) {
         const oldSyncCode = state.syncCode;
+        const oldLocalMode = state.isLocalMode;
+
         state.isSynced = false;
         state.syncCode = '';
-        state.currentUser = 'user-a'; // 自分のアカウントに戻す
+        state.isLocalMode = false;
+        state.currentUser = 'user-a';
         
-        // 連携解除の際、パートナーが作った予定をカレンダーから消去する
         state.events = state.events.filter(e => e.createdBy === 'user-a');
-        state.userBName = 'パートナー'; // パートナー名を初期化
-        state.myInviteCode = generateRandomInviteCode(); // 自分のコードを新しく作り直す
+        state.userBName = '\u30d1\u30fc\u30c8\u30ca\u30fc';
+        state.myInviteCode = generateRandomInviteCode();
         localStorage.setItem('calm_my_invite_code', state.myInviteCode);
 
         saveEventsToStorage();
@@ -1014,30 +1058,32 @@ function renderMembersScreen() {
         saveSyncStatus();
         saveLoginStatus();
 
-        // サーバー側の部屋データを削除 (DELETE)
-        if (oldSyncCode) {
-          fetch(`/api/sync?code=${oldSyncCode}`, { method: 'DELETE' }).catch(err => {
-            console.error('Failed to delete sync room on server:', err);
-          });
+        if (oldLocalMode) {
+          localStorage.removeItem(`calm_local_sync:${oldSyncCode}`);
+        } else {
+          if (oldSyncCode) {
+            fetch(`/api/sync?code=${oldSyncCode}`, { method: 'DELETE' }).catch(err => {
+              console.error('Failed to delete sync room on server:', err);
+            });
+          }
         }
 
         renderMembersScreen();
       }
     });
   } else {
-    // 未連携の場合のみのイベント
     const joinForm = document.getElementById('form-join-calendar');
     if (joinForm) {
       joinForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const inputCode = document.getElementById('join-code-input').value.trim().toUpperCase();
         if (!inputCode.startsWith('CALM-')) {
-          alert('正しい招待コードの形式ではありません。');
+          alert('\u6b63\u3057\u3044\u62db\u5f85\u30b3\u30fc\u30c9\u306e\u5f62\u5f0f\u3067\u306f\u3042\u308a\u307e\u305b\u3093\u3002');
           return;
         }
 
         if (inputCode === state.myInviteCode) {
-          alert('自分自身の招待コードを入力することはできません。');
+          alert('\u81ea\u5206\u81ea\u8eab\u306e\u62db\u5f85\u30b3\u30fc\u30c9\u3092\u5165\u529b\u3059\u308b\u3053\u3068\u306f\u3067\u304d\u307e\u305b\u3093\u3002');
           return;
         }
 
@@ -1045,12 +1091,11 @@ function renderMembersScreen() {
         let serverData = null;
 
         try {
-          // 入力されたコードでサーバー上の既存データをチェック
           const res = await fetch(`/api/sync?code=${inputCode}`);
           if (res.status === 503 || res.status === 404) {
             isLocalFallback = true;
           } else if (!res.ok) {
-            throw new Error('サーバー通信エラー');
+            throw new Error('Server error');
           } else {
             serverData = await res.json();
           }
@@ -1060,64 +1105,38 @@ function renderMembersScreen() {
         }
 
         if (isLocalFallback) {
-          // DB未接続やローカルスタンドアロンの場合、擬似接続で動作確認をさせる
-          alert('接続に成功しました！(スタンドアロンモードでの擬似同期)');
-          state.isSynced = true;
-          state.syncCode = inputCode;
-          state.currentUser = 'user-b'; // 参加者側になる
-          
-          // 自分の名前をログイン時の名前(state.userAName)から退避
-          state.userBName = state.userAName || 'あなた';
-          // 相手の名前を仮のデモ用名「はるか」に設定
-          state.userAName = 'はるか';
-          
-          // 擬似的な初期予定を追加
-          const demoEvents = [
-            {
-              id: "partner-event-1",
-              title: "ふたりで晩ごはん",
-              date: getOffsetDateString(1),
-              time: "19:00",
-              note: "駅前の和食屋さんで晩ごはん。",
-              createdBy: "user-a"
+          const localDataStr = localStorage.getItem(`calm_local_sync:${inputCode}`);
+          if (localDataStr) {
+            try {
+              serverData = JSON.parse(localDataStr);
+            } catch (e) {
+              console.error('Failed to parse local sync data', e);
             }
-          ];
-          demoEvents.forEach(pe => {
-            if (!state.events.some(e => e.id === pe.id)) {
-              state.events.push(pe);
-            }
-          });
-          saveEventsToStorage();
-          saveSyncStatus();
-          saveLoginStatus();
-          saveUserNamesToStorage();
-          renderMembersScreen();
-          return;
+          }
+          state.isLocalMode = true;
+        } else {
+          state.isLocalMode = false;
         }
 
         try {
           state.isSynced = true;
           state.syncCode = inputCode;
-          state.currentUser = 'user-b'; // 招待コードを入力した側なので、user-b (参加者) となる
+          state.currentUser = 'user-b';
 
-          // 自分の名前はログインした時の名前なので、現在の userAName を退避・マッピング
-          const myName = state.userAName || 'あなた';
+          const myName = state.userAName || '\u3042\u306a\u305f';
 
-          // 相手の名前を user-a として取得
-          if (serverData && serverData.userAName) {
-            state.userAName = serverData.userAName; // 相手の名前を user-a として取得
+          if (serverData && serverData.userAName && !isDefaultOrEmpty(serverData.userAName)) {
+            state.userAName = serverData.userAName; 
           } else {
-            state.userAName = 'パートナー';
+            state.userAName = '\u30d1\u30fc\u30c8\u30ca\u30fc';
           }
           state.userBName = myName; 
 
-          // 予定の結合 (サーバーデータが不完全な場合のクラッシュ対策)
           const serverEvents = (serverData && Array.isArray(serverData.events)) ? serverData.events : [];
           const mergedEvents = [...serverEvents];
           state.events.forEach(myEv => {
-            // 重複していない自分の予定（user-bとしての予定）をマージ
             if (!mergedEvents.some(se => se.id === myEv.id)) {
-              myEv.createdBy = 'user-b'; // 自分の役割を user-b に変更
+              myEv.createdBy = 'user-b';
               mergedEvents.push(myEv);
             }
           });
@@ -1128,21 +1147,22 @@ function renderMembersScreen() {
           saveSyncStatus();
           saveLoginStatus();
 
-          // サーバーに最新の結合データをアップロード
           await uploadEventsToServer();
 
-          alert(`接続に成功しました！カレンダーが同期されました。`);
+          alert(state.isLocalMode 
+            ? '\u9023\u643a\u306b\u6210\u529f\u3057\u307e\u3057\u305f\uff01\uff08\u30b9\u30bf\u30f3\u30c9\u30a2\u30ed\u30f3\u30e2\u30fc\u30c9\u3067\u306e\u64ec\u4f3c\u540c\u671f\uff09' 
+            : '\u9023\u643a\u306b\u6210\u529f\u3057\u307e\u3057\u305f\uff01\u30ab\u30ec\u30f3\u30c0\u30fc\u304c\u540c\u671f\u3055\u308c\u307e\u3057\u305f\u3002'
+          );
           renderMembersScreen();
         } catch (error) {
           console.error(error);
-          alert('同期処理でエラーが発生しました。インターネット接続を確認し、再度お試しください。');
+          alert('\u540c\u671f\u51e6\u7406\u3067\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f\u3002\u30a4\u30f3\u30bf\u30fc\u306d\u30c3\u30c8\u9023\u643a\u3092\u7d39\u4ecb\u3057\u3001\u518d\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002');
         }
       });
     }
   }
-}
 
-// 8-7. 設定画面
+// 8-7. 險ｭ螳夂判髱｢ 設定画面
 function renderSettingsScreen() {
   appEl.innerHTML = `
     <div class="fade-in">
@@ -1380,11 +1400,12 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   // 自動同期 (ポーリング: 15秒ごと)
+    // Auto-sync polling every 5 seconds (Handles LocalStorage simulation + API sync)
   setInterval(async () => {
     if (!state.isLoggedIn) return;
 
     if (state.isSynced) {
-      // 連携済み状態の同期
+      // Sync events and usernames when connected
       const oldEvents = JSON.stringify(state.events);
       const oldUserAName = state.userAName;
       const oldUserBName = state.userBName;
@@ -1394,7 +1415,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const hasChanged = oldEvents !== JSON.stringify(state.events) || 
                          oldUserAName !== state.userAName || 
                          oldUserBName !== state.userBName;
-                         
+                          
       if (hasChanged) {
         if (state.activeTab === 'calendar') {
           renderCalendarScreen();
@@ -1403,37 +1424,71 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       }
     } else {
-      // 未連携状態での接続待ちポーリング
+      // Polling for incoming connection when not synced
       if (!state.myInviteCode) return;
+
+      let data = null;
+
+      // Check LocalStorage first (Local emulation)
+      const localDataStr = localStorage.getItem(`calm_local_sync:${state.myInviteCode}`);
+      if (localDataStr) {
+        try {
+          data = JSON.parse(localDataStr);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (data && data.userBName && !isDefaultOrEmpty(data.userBName)) {
+        // Detected partner info written to LocalStorage
+        state.isSynced = true;
+        state.syncCode = state.myInviteCode;
+        state.isLocalMode = true;
+        state.currentUser = 'user-a';
+        state.userBName = data.userBName;
+        state.events = data.events;
+        
+        saveEventsToStorage();
+        saveUserNamesToStorage();
+        saveSyncStatus();
+        saveLoginStatus();
+        
+        await uploadEventsToServer();
+        
+        alert(`\u30d1\u30fc\u30c8\u30ca\u30fc\u300c${data.userBName}\u300d\u304c\u3042\u306a\u305f\u306e\u62db\u5f85\u30b3\u30fc\u30c9\u3092\u5165\u529b\u3057\u3001\u540c\u671f\u3055\u308c\u307e\u3057\u305f\uff01`);
+        initAppView();
+        return;
+      }
+
+      // Check server API (Production)
       try {
         const res = await fetch(`/api/sync?code=${state.myInviteCode}`);
         if (res.ok) {
-          const data = await res.json();
-          // 誰かが自分のコードを入力して同期した場合
-          if (data && data.userBName) {
+          const apiData = await res.json();
+          if (apiData && apiData.userBName && !isDefaultOrEmpty(apiData.userBName)) {
             state.isSynced = true;
             state.syncCode = state.myInviteCode;
-            state.currentUser = 'user-a'; // 自分が作成者
-            state.userBName = data.userBName;
-            state.events = data.events;
+            state.isLocalMode = false;
+            state.currentUser = 'user-a';
+            state.userBName = apiData.userBName;
+            state.events = apiData.events;
             
             saveEventsToStorage();
             saveUserNamesToStorage();
             saveSyncStatus();
             saveLoginStatus();
             
-            // 即座にサーバーへ自分の情報を含めて最新化
             await uploadEventsToServer();
             
-            alert(`パートナー「${data.userBName}」があなたの招待コードを入力し、同期されました！`);
+            alert(`\u30d1\u30fc\u30c8\u30ca\u30fc\u300c${apiData.userBName}\u300d\u304c\u3042\u306a\u305f\u306e\u62db\u5f85\u30b3\u30fc\u30c9\u3092\u5165\u529b\u3057\u3001\u540c\u671f\u3055\u308c\u307e\u3057\u305f\uff01`);
             initAppView();
           }
         }
       } catch (err) {
-        // ローカル環境等のエラーは無視
+        // Ignore API errors in local environment
       }
     }
-  }, 15000);
+  }, 5000);
 
   if (state.isLoggedIn && !state.isSynced) {
     initializeRoomOnServer(); // 起動時に部屋データを確保
