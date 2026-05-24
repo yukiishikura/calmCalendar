@@ -97,6 +97,10 @@ function isDefaultOrEmpty(name) {
   return !name || name === '\u30d1\u30fc\u30c8\u30ca\u30fc' || name === '\u3042\u306a\u305f';
 }
 
+function isLocalHost() {
+  return location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+}
+
 // --- 3. データ永続化 (LocalStorage) ---
 function loadStateFromStorage() {
   const storedEvents = localStorage.getItem('calm_events');
@@ -179,18 +183,25 @@ async function fetchEventsFromServer() {
     try {
       const res = await fetch(`/api/sync?code=${state.syncCode}`);
       if (res.status === 503 || res.status === 404) {
-        console.warn('Database not configured or room missing on server. Switching to local emulation.');
-        state.isLocalMode = true;
-        saveSyncStatus();
-        return fetchEventsFromServer();
+        if (isLocalHost()) {
+          console.warn('Database not configured or room missing on server. Switching to local emulation.');
+          state.isLocalMode = true;
+          saveSyncStatus();
+          return fetchEventsFromServer();
+        } else {
+          console.error('Server sync room not found or database not configured (GET).');
+          return;
+        }
       }
       if (!res.ok) throw new Error('Failed to fetch from server');
       data = await res.json();
     } catch (err) {
       console.error('Sync error (GET):', err);
-      state.isLocalMode = true;
-      saveSyncStatus();
-      return fetchEventsFromServer();
+      if (isLocalHost()) {
+        state.isLocalMode = true;
+        saveSyncStatus();
+        return fetchEventsFromServer();
+      }
     }
   }
 
@@ -259,18 +270,24 @@ async function uploadEventsToServer() {
         })
       });
       if (res.status === 503) {
-        console.warn('Database not configured. Bypassing upload, saving to local emulation.');
-        state.isLocalMode = true;
-        saveSyncStatus();
-        localStorage.setItem(`calm_local_sync:${state.syncCode}`, JSON.stringify(payload));
+        if (isLocalHost()) {
+          console.warn('Database not configured. Bypassing upload, saving to local emulation.');
+          state.isLocalMode = true;
+          saveSyncStatus();
+          localStorage.setItem(`calm_local_sync:${state.syncCode}`, JSON.stringify(payload));
+        } else {
+          console.error('Database connection failed on production (POST).');
+        }
         return;
       }
       if (!res.ok) throw new Error('Failed to upload to server');
     } catch (err) {
       console.error('Sync error (POST):', err);
-      state.isLocalMode = true;
-      saveSyncStatus();
-      localStorage.setItem(`calm_local_sync:${state.syncCode}`, JSON.stringify(payload));
+      if (isLocalHost()) {
+        state.isLocalMode = true;
+        saveSyncStatus();
+        localStorage.setItem(`calm_local_sync:${state.syncCode}`, JSON.stringify(payload));
+      }
     }
   }
 }
@@ -751,7 +768,7 @@ function showAddEventForm() {
         <input class="form-input" type="text" id="evt-title" required placeholder="例: カフェでお茶をする" autofocus>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-sm);">
+      <div style="display: grid; grid-template-columns: 4fr 6fr; gap: var(--space-sm);">
         <div class="form-group">
           <label class="form-label" for="evt-date">\u65e5\u4ed8</label>
           <input class="form-input" type="date" id="evt-date" value="${state.selectedDate}" required style="padding: var(--space-md) var(--space-xs); min-width: 0;">
@@ -846,7 +863,7 @@ function showEditEventForm(event) {
         <input class="form-input" type="text" id="evt-edit-title" value="${escapeHtml(event.title)}" required placeholder="例: カフェでお茶をする">
       </div>
 
-      <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-sm);">
+      <div style="display: grid; grid-template-columns: 4fr 6fr; gap: var(--space-sm);">
         <div class="form-group">
           <label class="form-label" for="evt-edit-date">\u65e5\u4ed8</label>
           <input class="form-input" type="date" id="evt-edit-date" value="${event.date}" required style="padding: var(--space-md) var(--space-xs); min-width: 0;">
@@ -1089,19 +1106,37 @@ function renderMembersScreen() {
 
         let isLocalFallback = false;
         let serverData = null;
+        const isLocal = isLocalHost();
 
         try {
           const res = await fetch(`/api/sync?code=${inputCode}`);
-          if (res.status === 503 || res.status === 404) {
-            isLocalFallback = true;
+          if (res.status === 503) {
+            if (isLocal) {
+              isLocalFallback = true;
+            } else {
+              alert('サーバーのデータベース接続が設定されていません。Vercelのプロジェクト設定でKVデータベースを接続してください。');
+              return;
+            }
+          } else if (res.status === 404) {
+            if (isLocal) {
+              isLocalFallback = true;
+            } else {
+              alert('指定された招待コードが見つかりません。正しいコードを入力してください。');
+              return;
+            }
           } else if (!res.ok) {
             throw new Error('Server error');
           } else {
             serverData = await res.json();
           }
         } catch (error) {
-          console.warn('Sync connection failed. Falling back to local simulation:', error);
-          isLocalFallback = true;
+          console.warn('Sync connection failed:', error);
+          if (isLocal) {
+            isLocalFallback = true;
+          } else {
+            alert('同期サーバーとの通信に失敗しました。電波状況をご確認の上、再度お試しください。');
+            return;
+          }
         }
 
         if (isLocalFallback) {
